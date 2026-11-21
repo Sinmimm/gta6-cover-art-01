@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gen-photos</title>
+<style>html,body{margin:0;padding:0;background:#000}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="800"></canvas>
+<script>
+// TIDELINE PRESS — procedural demo-photo generator.
+// Every "photo" is drawn on a 2-D canvas: sky gradients, suns, palms and
+// silhouettes from a seeded PRNG. No photographs, no borrowed artwork.
+// Usage: gen-photos.html?scene=<id>  → draws the scene, sets window.__genReady.
+function hashSeed(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const ctx = document.getElementById('c').getContext('2d');
+const W = 1200, H = 800;
+
+function sky(stops) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  stops.forEach(([o, c]) => g.addColorStop(o, c));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+function sun(cx, cy, r, color, glow) {
+  const g = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r * 3.2);
+  g.addColorStop(0, glow);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r * 3.2, cy - r * 3.2, r * 6.4, r * 6.4);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+}
+function sea(y, top, bottom) {
+  const g = ctx.createLinearGradient(0, y, 0, H);
+  g.addColorStop(0, top); g.addColorStop(1, bottom);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y, W, H - y);
+}
+function birds(rnd, n, y0, y1) {
+  ctx.strokeStyle = 'rgba(20,8,30,0.7)';
+  ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  for (let i = 0; i < n; i++) {
+    const x = 60 + rnd() * (W - 120), y = y0 + rnd() * (y1 - y0), s = 8 + rnd() * 10;
+    ctx.beginPath();
+    ctx.moveTo(x - s, y);
+    ctx.quadraticCurveTo(x - s * 0.4, y - s * 0.7, x, y);
+    ctx.quadraticCurveTo(x + s * 0.4, y - s * 0.7, x + s, y);
+    ctx.stroke();
+  }
+}
+function palm(x, y, s, color) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(3, s * 0.05); ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x + s * 0.12, y - s * 0.55, x + s * 0.28, y - s * 0.95);
+  ctx.stroke();
+  const tx = x + s * 0.28, ty = y - s * 0.95;
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI * 0.85 + (i * Math.PI * 1.7) / 6;
+    const len = s * (0.42 + (i % 2) * 0.08);
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.quadraticCurveTo(tx + Math.cos(a) * len * 0.6, ty + Math.sin(a) * len * 0.5 - s * 0.12,
+      tx + Math.cos(a) * len, ty + Math.sin(a) * len + s * 0.18);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function grain(rnd) {
+  ctx.save(); ctx.globalAlpha = 0.05;
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = rnd() > 0.5 ? '#fff' : '#000';
+    ctx.fillRect(rnd() * W, rnd() * H, 2, 2);
+  }
+  ctx.restore();
+}
+function vignette() {
+  const g = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.35, W / 2, H / 2, W * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(5,2,12,0.4)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function person(x, y, s, opts = {}) {
+  // Simple standing silhouette: head, hair, shoulders, torso.
+  ctx.save();
+  ctx.fillStyle = opts.color || '#14081f';
+  ctx.beginPath(); ctx.arc(x, y - s * 0.78, s * 0.16, 0, Math.PI * 2); ctx.fill(); // head
+  if (opts.hair) {
+    ctx.beginPath(); ctx.arc(x - s * 0.03, y - s * 0.82, s * 0.17, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillRect(x - s * 0.2, y - s * 0.82, s * 0.07, s * 0.34); // long hair
+  }
+  if (opts.hat) {
+    ctx.fillRect(x - s * 0.22, y - s * 0.9, s * 0.44, s * 0.05);
+    ctx.beginPath(); ctx.arc(x, y - s * 0.9, s * 0.13, Math.PI, 0); ctx.fill();
+  }
+  if (opts.bandana) {
+    ctx.fillStyle = opts.bandana;
+    ctx.beginPath(); ctx.arc(x, y - s * 0.78, s * 0.165, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + s * 0.14, y - s * 0.8); ctx.lineTo(x + s * 0.3, y - s * 0.62); ctx.lineTo(x + s * 0.2, y - s * 0.72); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = opts.color || '#14081f';
+  ctx.beginPath(); // shoulders + torso
+  ctx.moveTo(x - s * 0.3, y);
+  ctx.quadraticCurveTo(x - s * 0.3, y - s * 0.62, x, y - s * 0.62);
+  ctx.quadraticCurveTo(x + s * 0.3, y - s * 0.62, x + s * 0.3, y);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+const scenes = {
+  'hero-convertible'(rnd) {
+    sky([[0, '#2b0a4e'], [0.45, '#ff5e3a'], [0.75, '#ff9e2e'], [1, '#ffd76a']]);
+    sun(600, 470, 110, '#fff3b0', 'rgba(255,190,80,0.55)');
+    sea(520, '#ff7e2e', '#3a1040');
+    birds(rnd, 5, 90, 260);
+    palm(90, 560, 260, '#1c0a2e');
+    palm(1130, 570, 230, '#1c0a2e');
+    // Road.
+    ctx.fillStyle = '#1a0b26'; ctx.fillRect(0, 640, W, 160);
+    ctx.fillStyle = '#ffd76a';
+    for (let x = 40; x < W; x += 140) ctx.fillRect(x, 716, 70, 8);
+    // Red convertible, side profile.
+    ctx.save();
+    ctx.fillStyle = '#c1122f';
+    ctx.beginPath();
+    ctx.moveTo(330, 640);
+    ctx.lineTo(360, 560); ctx.lineTo(560, 545); ctx.lineTo(700, 560);
+    ctx.lineTo(880, 580); ctx.lineTo(900, 640);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#8f0c22';
+    ctx.beginPath(); ctx.roundRect(330, 610, 570, 34, 14); ctx.fill();
+    ctx.fillStyle = '#bfe8ff';
+    ctx.beginPath(); ctx.moveTo(390, 560); ctx.lineTo(540, 550); ctx.lineTo(560, 585); ctx.lineTo(400, 590); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#14081f';
+    ctx.beginPath(); ctx.arc(450, 640, 46, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(780, 640, 46, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d8d8d8';
+    ctx.beginPath(); ctx.arc(450, 640, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(780, 640, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // Woman with sunglasses leaning on the door.
+    person(560, 560, 210, { hair: true, color: '#1c0a2e' });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(545, 395, 12, 6); ctx.fillRect(568, 395, 12, 6); // sunglasses glint
+    ctx.fillStyle = '#ffe9a8';
+    ctx.beginPath(); ctx.arc(560, 400, 4, 0, Math.PI * 2); ctx.fill(); // earring
+  },
+  'fisherman'(rnd) {
+    sky([[0, '#ffd76a'], [0.5, '#ff9e2e'], [1, '#ff5e3a']]);
+    sun(850, 300, 90, '#fff3b0', 'rgba(255,190,80,0.5)');
+    sea(430, '#2ec4b6', '#0b3d5c');
+    ctx.fillStyle = 'rgba(255,243,176,0.35)';
+    for (let i = 0; i < 8; i++) ctx.fillRect(780 + rnd() * 160, 440 + i * 34, 90 - i * 8, 5);
+    // Pier planks.
+    ctx.fillStyle = '#6b4423';
+    ctx.beginPath(); ctx.moveTo(0, 800); ctx.lineTo(520, 430); ctx.lineTo(760, 430); ctx.lineTo(560, 800); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#4a2d17'; ctx.lineWidth = 4;
+    for (let i = 0; i < 9; i++) {
+      const t = i / 8;
+      ctx.beginPath();
+      ctx.moveTo(520 - 520 * t * 0.9 + 60 * t, 430 + 370 * t);
+      ctx.lineTo(760 - 200 * t + 40 * t, 430 + 370 * t);
+      ctx.stroke();
+    }
+    // Old fisherman with rod.
+    person(640, 470, 260, { hat: true, color: '#241207' });
+    ctx.strokeStyle = '#241207'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(700, 330); ctx.lineTo(980, 120); ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(980, 120); ctx.quadraticCurveTo(900, 300, 830, 430); ctx.stroke();
+    birds(rnd, 4, 80, 220);
+  },
+  'portrait-man'(rnd) {
+    sky([[0, '#1b1035'], [0.55, '#7b2ff7'], [1, '#ff5e3a']]);
+    for (let i = 0; i < 14; i++) {
+      ctx.fillStyle = `rgba(255,${180 + Math.floor(rnd() * 60)},120,${0.25 + rnd() * 0.4})`;
+      ctx.beginPath(); ctx.arc(60 + rnd() * (W - 120), 120 + rnd() * 380, 6 + rnd() * 22, 0, Math.PI * 2); ctx.fill();
+    }
+    sun(600, 330, 70, '#ffe9a8', 'rgba(255,150,80,0.5)');
+    // Rooftop + skyline.
+    ctx.fillStyle = '#12081f';
+    for (let x = 0; x < W; x += 90) {
+      const h = 120 + rnd() * 180;
+      ctx.fillRect(x, 560 - h, 70, h);
+    }
+    ctx.fillRect(0, 560, W, 240);
+    // Man close-up.
+    ctx.fillStyle = '#2a1420';
+    ctx.beginPath(); ctx.arc(600, 330, 130, 0, Math.PI * 2); ctx.fill(); // head
+    ctx.beginPath(); ctx.arc(600, 330, 132, 0.15 * Math.PI, 0.85 * Math.PI); ctx.fill(); // beard
+    ctx.fillStyle = '#1c0d18';
+    ctx.beginPath(); ctx.moveTo(380, 800); ctx.quadraticCurveTo(400, 520, 600, 500); ctx.quadraticCurveTo(800, 520, 820, 800); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff5e3a'; ctx.fillRect(520, 560, 40, 90); ctx.fillStyle = '#2ec4b6'; ctx.fillRect(640, 580, 34, 70); // floral shirt
+    ctx.fillStyle = '#ffd76a'; ctx.fillRect(560, 520, 80, 10); // gold chain
+    ctx.fillStyle = '#fff'; ctx.fillRect(545, 320, 14, 5); ctx.fillRect(620, 320, 14, 5); // eyes
+  },
+  'motorcycle'(rnd) {
+    sky([[0, '#0e4d64'], [0.6, '#2ec4b6'], [1, '#ffd76a']]);
+    sun(950, 220, 80, '#fff3b0', 'rgba(255,220,120,0.5)');
+    sea(480, '#1b7f8e', '#0b3d5c');
+    ctx.fillStyle = '#241a12'; ctx.beginPath(); ctx.moveTo(0, 800); ctx.lineTo(480, 480); ctx.lineTo(720, 480); ctx.lineTo(1200, 800); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffd76a';
+    for (let i = 0; i < 5; i++) ctx.fillRect(560 + i * 18, 500 + i * 62, 26, 10);
+    palm(120, 520, 240, '#0d2f1e');
+    palm(1090, 530, 220, '#0d2f1e');
+    // Motorcycle side profile.
+    ctx.save();
+    ctx.strokeStyle = '#0d0d12'; ctx.lineWidth = 14; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(480, 640); ctx.lineTo(640, 600); ctx.lineTo(760, 640); ctx.stroke();
+    ctx.strokeStyle = '#c1122f'; ctx.lineWidth = 22;
+    ctx.beginPath(); ctx.moveTo(600, 610); ctx.lineTo(700, 580); ctx.stroke();
+    ctx.fillStyle = '#0d0d12';
+    ctx.beginPath(); ctx.arc(480, 660, 52, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(790, 660, 52, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d8d8d8';
+    ctx.beginPath(); ctx.arc(480, 660, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(790, 660, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0d0d12'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.moveTo(700, 580); ctx.lineTo(760, 540); ctx.stroke();
+    ctx.restore();
+    person(640, 600, 190, { color: '#0d0d12' });
+    birds(rnd, 4, 90, 240);
+  },
+  'gas-station'(rnd) {
+    sky([[0, '#05070f'], [0.6, '#12082e'], [1, '#2b0a4e']]);
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.3 + rnd() * 0.6})`;
+      ctx.fillRect(rnd() * W, rnd() * 300, 2, 2);
+    }
+    // Canopy.
+    ctx.fillStyle = '#0d0d12'; ctx.fillRect(220, 220, 760, 60);
+    ctx.fillStyle = '#ff2fb3'; ctx.fillRect(220, 276, 760, 10);
+    ctx.fillStyle = '#7df9ff'; ctx.font = '700 44px sans-serif'; ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff2fb3'; ctx.shadowBlur = 26;
+    ctx.fillText('TIDE FUEL', 600, 262);
+    ctx.shadowBlur = 0;
+    // Pumps.
+    for (const px of [340, 560, 780]) {
+      ctx.fillStyle = '#e8e8e8'; ctx.fillRect(px, 420, 90, 190);
+      ctx.fillStyle = '#ff2fb3'; ctx.fillRect(px, 420, 90, 26);
+      ctx.fillStyle = '#111'; ctx.fillRect(px + 18, 470, 54, 60);
+    }
+    ctx.fillStyle = '#0d0d12'; ctx.fillRect(300, 610, 600, 16);
+    // Wet road reflections.
+    ctx.fillStyle = '#0a0616'; ctx.fillRect(0, 626, W, 174);
+    for (let i = 0; i < 26; i++) {
+      ctx.fillStyle = rnd() > 0.5 ? 'rgba(255,47,179,0.35)' : 'rgba(125,249,255,0.3)';
+      ctx.fillRect(240 + rnd() * 720, 640 + rnd() * 130, 6, 30 + rnd() * 60);
+    }
+    palm(1080, 640, 220, '#05070f');
+  },
+  'coastal-road'(rnd) {
+    sky([[0, '#7df9ff'], [0.5, '#2ec4b6'], [1, '#ffd76a']]);
+    sun(300, 200, 90, '#fff3b0', 'rgba(255,240,180,0.5)');
+    sea(420, '#2ec4b6', '#0b6e8e');
+    ctx.fillStyle = '#e8c98a'; ctx.beginPath(); ctx.moveTo(0, 800); ctx.lineTo(520, 420); ctx.lineTo(680, 420); ctx.lineTo(1200, 800); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a2118'; ctx.beginPath(); ctx.moveTo(430, 800); ctx.lineTo(560, 420); ctx.lineTo(640, 420); ctx.lineTo(760, 800); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffd76a';
+    for (let i = 0; i < 6; i++) ctx.fillRect(588 - i * 2, 450 + i * 58, 14, 26);
+    palm(150, 460, 230, '#0d3a24');
+    palm(1020, 470, 250, '#0d3a24');
+    palm(880, 430, 160, '#0d3a24');
+    birds(rnd, 6, 80, 260);
+  },
+  'speedboat'(rnd) {
+    sky([[0, '#bfe8ff'], [0.6, '#7df9ff'], [1, '#ffe9a8']]);
+    sun(950, 180, 70, '#fff3b0', 'rgba(255,240,180,0.5)');
+    sea(380, '#2ec4b6', '#0b5e7a');
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 3;
+    for (let i = 0; i < 10; i++) {
+      ctx.beginPath();
+      ctx.moveTo(80 + rnd() * 1000, 420 + rnd() * 320);
+      ctx.quadraticCurveTo(80 + rnd() * 1000, 420 + rnd() * 320, 80 + rnd() * 1000, 420 + rnd() * 320);
+      ctx.stroke();
+    }
+    // Spray.
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let i = 0; i < 60; i++) {
+      ctx.beginPath(); ctx.arc(760 + rnd() * 260, 560 + rnd() * 90, 3 + rnd() * 9, 0, Math.PI * 2); ctx.fill();
+    }
+    // Hull.
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath(); ctx.moveTo(300, 560); ctx.lineTo(820, 560); ctx.lineTo(760, 640); ctx.lineTo(380, 640); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff2fb3'; ctx.fillRect(300, 560, 520, 14);
+    ctx.fillStyle = '#bfe8ff'; ctx.beginPath(); ctx.moveTo(430, 560); ctx.lineTo(480, 470); ctx.lineTo(620, 470); ctx.lineTo(660, 560); ctx.closePath(); ctx.fill();
+    person(560, 480, 150, { color: '#0d0d12' });
+    birds(rnd, 3, 80, 200);
+  },
+  'beach-palms'(rnd) {
+    sky([[0, '#ff9e2e'], [0.55, '#ff5e3a'], [1, '#7b2ff7']]);
+    sun(600, 330, 150, '#fff3b0', 'rgba(255,190,80,0.6)');
+    sea(470, '#ff7e2e', '#3a1040');
+    ctx.fillStyle = '#e8c98a'; ctx.fillRect(0, 640, W, 160);
+    palm(140, 700, 330, '#1c0a2e');
+    palm(1080, 710, 300, '#1c0a2e');
+    palm(950, 690, 180, '#1c0a2e');
+    birds(rnd, 6, 90, 280);
+  },
+  'bandana-woman'(rnd) {
+    sky([[0, '#05070f'], [0.6, '#1b1035'], [1, '#3a1040']]);
+    // Buildings + neon signs.
+    const signs = ['#ff2fb3', '#7df9ff', '#ffd76a', '#ff5e3a'];
+    for (let x = 0; x < W; x += 150) {
+      const h = 260 + rnd() * 220;
+      ctx.fillStyle = '#0d0d12';
+      ctx.fillRect(x + 10, 620 - h, 130, h);
+      ctx.fillStyle = signs[Math.floor(rnd() * signs.length)];
+      ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 22;
+      ctx.fillRect(x + 26, 620 - h + 30, 98, 60);
+      ctx.shadowBlur = 0;
+    }
+    ctx.fillStyle = '#0a0616'; ctx.fillRect(0, 620, W, 180);
+    for (let i = 0; i < 30; i++) {
+      ctx.fillStyle = rnd() > 0.5 ? 'rgba(255,47,179,0.35)' : 'rgba(125,249,255,0.3)';
+      ctx.fillRect(60 + rnd() * 1080, 640 + rnd() * 130, 6, 30 + rnd() * 60);
+    }
+    // Pink rim glow behind the woman so she reads against the dark street.
+    const glow = ctx.createRadialGradient(600, 430, 20, 600, 430, 260);
+    glow.addColorStop(0, 'rgba(255,47,179,0.55)');
+    glow.addColorStop(1, 'rgba(255,47,179,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(340, 170, 520, 520);
+    person(600, 640, 300, { hair: true, bandana: '#ff2fb3', color: '#0d0d12' });
+    ctx.fillStyle = '#ffd76a';
+    ctx.beginPath(); ctx.arc(600, 400, 5, 0, Math.PI * 2); ctx.fill();
+  },
+  'surfer'(rnd) {
+    sky([[0, '#ffd6f5'], [0.5, '#ffb3d9'], [1, '#7df9ff']]);
+    sun(600, 300, 100, '#fff3b0', 'rgba(255,220,160,0.55)');
+    sea(430, '#7df9ff', '#2e7f9e');
+    // Wave curl.
+    ctx.fillStyle = '#2e7f9e';
+    ctx.beginPath();
+    ctx.moveTo(0, 800); ctx.quadraticCurveTo(300, 480, 700, 560); ctx.quadraticCurveTo(1000, 620, 1200, 520);
+    ctx.lineTo(1200, 800); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(0, 790); ctx.quadraticCurveTo(300, 490, 700, 565); ctx.stroke();
+    // Board + surfer.
+    ctx.save();
+    ctx.translate(600, 640); ctx.rotate(-0.22);
+    ctx.fillStyle = '#ffd76a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 190, 26, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff2fb3'; ctx.fillRect(-60, -26, 120, 52);
+    ctx.restore();
+    person(600, 640, 260, { color: '#14081f' });
+    birds(rnd, 5, 90, 260);
+  },
+};
+
+const params = new URLSearchParams(location.search);
+const scene = params.get('scene') || 'hero-convertible';
+const draw = scenes[scene];
+if (draw) {
+  const rnd = mulberry32(hashSeed('photo:' + scene));
+  draw(rnd);
+  grain(rnd);
+  vignette();
+}
+window.__genReady = true;
+document.title = 'ready:' + scene;
+</script>
+</body>
+</html>

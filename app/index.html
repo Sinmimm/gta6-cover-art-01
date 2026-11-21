@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TIDELINE PRESS — Cover Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="studio">
+  <header>
+    <h1>TIDELINE PRESS <span>— Cover Studio</span></h1>
+    <p class="tagline">ONE COAST · SIX STORIES · NO WAY BACK</p>
+  </header>
+  <main>
+    <div id="controls">
+      <section class="step" id="step-1">
+        <h2>1 · Add photos</h2>
+        <div id="photo-strip" class="thumb-strip" aria-label="Demo photos"></div>
+        <p class="hint">Click a photo to put it in the selected panel. Drag to pan · Scroll to zoom · Shift-drag to swap.</p>
+        <div class="row">
+          <label class="file-btn">Add your photos
+            <input type="file" id="file-input" accept="image/*" multiple hidden>
+          </label>
+          <button type="button" id="btn-samples">Load samples</button>
+        </div>
+        <p class="hint">You can also paste an image anywhere on this page. Photos never leave your machine.</p>
+      </section>
+
+      <section class="step" id="step-cover">
+        <h2>Cover</h2>
+        <div id="cover-tabs" class="picker" role="tablist" aria-label="Cover"></div>
+        <h3>Layout</h3>
+        <div id="layout-picker" class="picker" aria-label="Layout"></div>
+        <h3>Grade</h3>
+        <div id="grade-picker" class="picker" aria-label="Grade"></div>
+        <h3>Paint</h3>
+        <label class="slider-row">Paint <input type="range" id="fx-paint" min="0" max="100" value="60"></label>
+        <label class="slider-row">Poster Ink <input type="range" id="fx-ink" min="0" max="100" value="50"></label>
+        <label class="slider-row">Grain <input type="range" id="fx-grain" min="0" max="100" value="50"></label>
+        <label class="slider-row">Halftone <input type="range" id="fx-halftone" min="0" max="100" value="35"></label>
+        <label class="slider-row">Glow <input type="range" id="fx-glow" min="0" max="100" value="60"></label>
+        <label class="slider-row">Vignette <input type="range" id="fx-vignette" min="0" max="100" value="60"></label>
+      </section>
+
+      <section class="step" id="step-2">
+        <h2>2 · Caption</h2>
+        <label>Title <input type="text" id="in-title" value="KING TIDE" maxlength="24"></label>
+        <label>Script subtitle <input type="text" id="in-script" value="After the Rain" maxlength="40"></label>
+        <label>Tagline <input type="text" id="in-tagline" value="ONE COAST · SIX STORIES · NO WAY BACK" maxlength="60"></label>
+        <label>Press quote <input type="text" id="in-quote" value="A SUN-BLEACHED JOYRIDE" maxlength="60"></label>
+        <label>Volume badge <input type="text" id="in-badge" value="VOL. 01" maxlength="16"></label>
+        <label>Ribbon <input type="text" id="in-ribbon" value="" maxlength="24" placeholder="e.g. LIMITED"></label>
+        <label class="check"><input type="checkbox" id="in-seal" checked> Seal — ORIGINAL COVER ART</label>
+        <label class="check"><input type="checkbox" id="in-marquee" checked> Marquee — stars + press quote</label>
+      </section>
+
+      <section class="step" id="panel-controls">
+        <h2>Panel</h2>
+        <label>Selected panel
+          <select id="panel-select"></select>
+        </label>
+        <label class="slider-row">Zoom <input type="range" id="panel-zoom" min="100" max="300" value="100"></label>
+        <div class="row">
+          <button type="button" id="panel-flip">Flip</button>
+          <select id="panel-swap" aria-label="Swap with panel"></select>
+        </div>
+        <label>Focal point
+          <select id="panel-focal">
+            <option>Top</option>
+            <option selected>Center</option>
+            <option>Bottom</option>
+          </select>
+        </label>
+        <label>Tag (role / place · time) <input type="text" id="panel-tag" maxlength="28"></label>
+        <button type="button" id="panel-reset">Reset crop</button>
+      </section>
+
+      <section class="step" id="step-3">
+        <h2>3 · Export</h2>
+        <label>Size
+          <select id="export-size">
+            <option value="1:1">Square · 1080 × 1080</option>
+            <option value="4:5">Portrait · 1080 × 1350</option>
+            <option value="16:9" selected>Landscape · 1920 × 1080</option>
+          </select>
+        </label>
+        <div class="row">
+          <button type="button" id="btn-export" class="primary">Export PNG</button>
+          <button type="button" id="btn-export-all">Export all 3 sizes</button>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-remix">Remix</button>
+          <button type="button" id="btn-surprise">Surprise me</button>
+        </div>
+        <p id="status-line" aria-live="polite">Ready.</p>
+      </section>
+    </div>
+    <div id="stage">
+      <canvas id="preview" width="1920" height="1080"></canvas>
+    </div>
+  </main>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
